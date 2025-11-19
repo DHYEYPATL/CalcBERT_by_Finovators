@@ -1,0 +1,56 @@
+
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+/calcBert
+
+venv/
+.env/
+*.env
+*.venv
+
+.ipynb_checkpoints/
+
+
+.cache/
+*cache*/
+
+# Logs
+*.log
+
+
+
+data/*.csv
+data/*.xlsx
+data/*.json
+data/raw/
+data/tmp/
+
+# Saved models (optional: keep only if needed)
+saved_models/
+models/
+checkpoints/
+
+# If you want to keep models, comment the above out.
+
+
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# VSCode
+.vscode/
+
+# PyCharm
+.idea/
+
+# -----------------------------
+# Build / Dist
+# -----------------------------
+dist/
+build/
+*.egg-info/
+*.egg
