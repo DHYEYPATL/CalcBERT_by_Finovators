@@ -112,3 +112,36 @@ def get_model_status() -> Dict[str, Any]:
             "message": str(e),
             "models": {}
         }
+
+
+@router.get("/categories")
+def get_categories() -> Dict[str, Any]:
+    """
+    Get all available categories from the TF-IDF model.
+    
+    Returns:
+        Dictionary with categories list and status
+    """
+    if adapter is None or adapter.tfidf is None:
+        return {
+            "status": "error",
+            "message": "TF-IDF model not loaded",
+            "categories": []
+        }
+    
+    try:
+        # Get categories from the label encoder
+        categories = list(adapter.tfidf.le.classes_)
+        return {
+            "status": "ok",
+            "categories": categories,
+            "count": len(categories),
+            "message": f"Retrieved {len(categories)} categories"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e),
+            "categories": [],
+            "count": 0
+        }

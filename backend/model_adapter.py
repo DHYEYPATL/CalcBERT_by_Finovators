@@ -1,26 +1,18 @@
-"""
-Model adapter - integrates ML models and provides unified prediction interface.
-Loads TF-IDF, DistilBERT (optional), rules, and fusion modules.
-"""
-
 import os
 import sys
 from typing import Dict, Any, Optional
 
-# Add parent directory to path for ml module imports
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from backend.config import settings
 
 
 class ModelAdapter:
-    """
-    Adapter class that loads and manages all ML models.
-    Provides a unified predict() interface that fuses rule-based and ML predictions.
-    """
+   
     
     def __init__(self):
-        """Initialize the model adapter and load all available models."""
+        
         self.tfidf = None
         self.distil = None
         self.rules = None
@@ -28,11 +20,7 @@ class ModelAdapter:
         self._load_models()
     
     def _load_models(self) -> None:
-        """
-        Load all available models and modules.
-        Gracefully handles missing models with fallbacks.
-        """
-        # Load TF-IDF pipeline
+        
         tfidf_path = settings.TFIDF_MODEL_DIR
         try:
             from ml.tfidf_pipeline import TfidfPipeline
@@ -47,7 +35,7 @@ class ModelAdapter:
             self.tfidf = None
             print(f"⚠ TF-IDF load failed: {e}")
         
-        # Load DistilBERT (optional)
+        
         dist_path = settings.DISTILBERT_DIR
         try:
             from ml.distilbert_model import DistilBertWrapper
@@ -62,7 +50,7 @@ class ModelAdapter:
             self.distil = None
             print(f"ℹ DistilBERT load failed (optional): {e}")
         
-        # Load rules module
+        
         try:
             import ml.rules as rules
             self.rules = rules
@@ -71,7 +59,7 @@ class ModelAdapter:
             self.rules = None
             print(f"⚠ Rules module load failed: {e}")
         
-        # Load fusion module
+        
         try:
             import ml.fusion as fusion
             self.fusion = fusion
@@ -81,38 +69,21 @@ class ModelAdapter:
             print(f"ℹ Fusion module not available (will use fallback): {e}")
     
     def predict(self, text: str, meta: Optional[Dict] = None) -> Dict[str, Any]:
-        """
-        Predict category for a transaction text.
-        Combines rule-based and ML predictions using fusion logic.
         
-        Args:
-            text: Transaction description text
-            meta: Optional metadata (MCC code, time, etc.)
-            
-        Returns:
-            Dictionary with:
-                - label: Predicted category
-                - confidence: Confidence score (0-1)
-                - rationale: Explanation with rule_hits and top_tokens
-                - model_used: Which model(s) were used
-                
-        Raises:
-            RuntimeError: If no models are available
-        """
         if meta is None:
             meta = {}
         
-        # 1) Apply rule-based classification
+       
         rule_output = None
         if self.rules:
             try:
                 rule_output = self.rules.apply_rules(text, meta)
-                # Expected format: {'label': str, 'confidence': float, 'matches': list}
+                
             except Exception as e:
                 print(f"Rule application error: {e}")
                 rule_output = None
         
-        # 2) Apply ML model (prefer DistilBERT, fallback to TF-IDF)
+        
         ml_output = None
         model_used = "none"
         
@@ -134,19 +105,25 @@ class ModelAdapter:
         
         if ml_output is None and rule_output is None:
             raise RuntimeError("No models available for prediction")
-        
-        # 3) Fuse predictions
-        if self.fusion and rule_output and ml_output:
+
+        tfidf_output = None
+        if self.tfidf:
             try:
-                fused = self.fusion.fuse(rule_output, ml_output)
-                fused["model_used"] = "fusion"
+                tfidf_output = self.tfidf.predict([text])[0]
+            except Exception as e:
+                print(f"TF-IDF prediction error: {e}")
+                tfidf_output = None
+
+        if self.fusion and (rule_output or ml_output or tfidf_output):
+            try:
+                fused = self.fusion.fuse(rule_output, ml_output, tfidf_output)
                 return fused
             except Exception as e:
                 print(f"Fusion error: {e}, falling back to simple merge")
-        
-        # Fallback: simple merge logic
+        # ... fallback logic (optional)
+
         if rule_output and ml_output:
-            # If rule has high confidence, prefer it
+            
             if rule_output.get("confidence", 0) > 0.9:
                 final_label = rule_output["label"]
                 final_confidence = rule_output["confidence"]
@@ -188,6 +165,30 @@ class ModelAdapter:
             }
         
         return fused
+    
+    def reload_tfidf_model(self) -> bool:
+        """
+        Reload the TF-IDF model from disk.
+        Call this after retraining to use the updated model.
+        
+        Returns:
+            True if reload successful, False otherwise
+        """
+        tfidf_path = settings.TFIDF_MODEL_DIR
+        try:
+            from ml.tfidf_pipeline import TfidfPipeline
+            p = TfidfPipeline()
+            if os.path.exists(tfidf_path):
+                p.load(tfidf_path)
+                self.tfidf = p
+                print(f"✓ TF-IDF model reloaded from {tfidf_path}")
+                return True
+            else:
+                print(f"⚠ TF-IDF model directory not found: {tfidf_path}")
+                return False
+        except Exception as e:
+            print(f"⚠ TF-IDF reload failed: {e}")
+            return False
     
     def get_model_status(self) -> Dict[str, bool]:
         """

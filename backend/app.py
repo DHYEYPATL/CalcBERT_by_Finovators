@@ -1,22 +1,16 @@
-"""
-CalcBERT Backend - Main FastAPI Application
-Offline hybrid rule+ML transaction categorizer with incremental learning.
-"""
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import sys
 import os
 import json
 
-# Add parent directory to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from backend.config import settings
 from backend.routes import predict, feedback, retrain
 from backend.storage import init_db
 
-# Create FastAPI app
+
 app = FastAPI(
     title=settings.API_TITLE,
     version=settings.API_VERSION,
@@ -25,7 +19,7 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# Configure CORS
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
@@ -42,7 +36,7 @@ def startup_event():
     print("CalcBERT Backend Starting...")
     print("=" * 60)
     
-    # Initialize database
+    
     try:
         init_db()
         print("✓ Database initialized")
@@ -61,7 +55,7 @@ def shutdown_event():
     print("CalcBERT Backend shutting down...")
 
 
-# Include routers
+
 app.include_router(predict.router, prefix="", tags=["Prediction"])
 app.include_router(feedback.router, prefix="", tags=["Feedback"])
 app.include_router(retrain.router, prefix="", tags=["Retrain"])

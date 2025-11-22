@@ -1,21 +1,20 @@
 # ui/app.py
 import sys
 import os
+import time
+import streamlit as st
+import requests
+from datetime import datetime
 
+# ---------- Setup ----------
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-import streamlit as st
-import requests
-import json
-import time
 from ui.components.explain_card import render_explain_card
-from ui.demo_cases import DEMO_CASES, DEMO_CORRECTIONS
+from ml.tfidf_pipeline import TfidfPipeline
 
-# ---------- Configuration ----------
 BACKEND_URL = "http://localhost:8000"
-CATEGORIES_FILE = "/data/categories.json"  # fallback if backend doesn't provide (not used by default)
 
 # ---------- Helpers ----------
 def get_health():
@@ -30,25 +29,29 @@ def get_health():
     except Exception as e:
         return "red", str(e)
 
+@st.cache_data(ttl=300)  # Cache for 5 minutes
 def fetch_categories():
-    # Try backend first
+    """Fetch categories from backend API (more reliable than loading model file)."""
     try:
-        r = requests.get(f"{BACKEND_URL}/categories", timeout=3.0)
-        if r.status_code == 200:
-            return r.json()
-    except Exception:
-        pass
-    # fallback: local simple list
-    return [
-        "Coffee & Beverages",
-        "Food",
-        "Fuel",
-        "Shopping",
-        "Transfer",
-        "Utilities",
-        "Income",
-        "Other"
-    ]
+        r = requests.get(f"{BACKEND_URL}/categories", timeout=5.0)
+        r.raise_for_status()
+        data = r.json()
+        if data.get("status") == "ok":
+            return data.get("categories", [])
+        else:
+            # Fallback: load from model file if API fails
+            pipeline = TfidfPipeline()
+            pipeline.load("saved_models/tfidf")
+            return list(pipeline.le.classes_)
+    except Exception as e:
+        # Fallback: load from model file if API fails
+        try:
+            pipeline = TfidfPipeline()
+            pipeline.load("saved_models/tfidf")
+            return list(pipeline.le.classes_)
+        except:
+            # Last resort: return empty list
+            return []
 
 def call_predict(text: str):
     payload = {"text": text, "meta": {}}
@@ -68,12 +71,22 @@ def call_retrain(mode="incremental", model="tfidf"):
     r.raise_for_status()
     return r.json()
 
-# ---------- UI layout ----------
+# ---------- Session State ----------
+if "session_transactions" not in st.session_state:
+    st.session_state.session_transactions = []
+
+if "last_predicted" not in st.session_state:
+    st.session_state.last_predicted = None
+
+if "last_prediction_result" not in st.session_state:
+    st.session_state.last_prediction_result = None
+
+# ---------- UI Layout ----------
 st.set_page_config(page_title="CalcBERT — Offline Transaction Categoriser", layout="wide")
 st.title("CalcBERT — Offline Transaction Categoriser")
 st.caption("Input a messy transaction → see predicted category + confidence + explanation → correct & retrain")
 
-# Health indicator
+# Health
 health_color, health_msg = get_health()
 health_label = f"Backend: {BACKEND_URL} — {health_msg}"
 if health_color == "green":
@@ -81,121 +94,122 @@ if health_color == "green":
 else:
     st.error(health_label)
 
-# two-column layout: left for input, right for demo & timeline
+# Columns
 left, right = st.columns([2, 1])
 
 with left:
     st.header("Predict a transaction")
-    text = st.text_input("Transaction string", placeholder="STARBCKS #1023 MUMBAI 12:32PM")
+    text_input_value = st.text_input(
+        "Transaction string",
+        value=st.session_state.last_predicted or "",
+        placeholder="STARBCKS #1023 MUMBAI 12:32PM"
+    )
 
-    predict_btn = st.button("Predict", key="predict_primary")
-    if predict_btn and text.strip():
-        with st.spinner("Calling predict..."):
-            try:
-                resp = call_predict(text)
-            except Exception as e:
-                st.error(f"Predict failed: {e}")
-                resp = None
-
-        if resp:
-            # Show prediction card
-            category = resp.get("category", "Unknown")
-            confidence = float(resp.get("confidence", 0.0))
-            model_used = resp.get("model_used") or resp.get("explanation",{}).get("model_used","unknown")
-            st.markdown(f"<h2 style='margin:0'>{category}</h2>", unsafe_allow_html=True)
-            conf_pct = int(round(confidence * 100))
-            st.write(f"Confidence: {confidence:.2f}")
-            # progress bar with color logic
-            if confidence >= 0.8:
-                bar_color = "#2ECC71"  # green
-            elif confidence >= 0.5:
-                bar_color = "#F39C12"  # amber
-            else:
-                bar_color = "#E74C3C"  # red
-
-            st.markdown(
-                f"""
-                <div style="background:#eee;border-radius:8px;padding:6px;">
-                  <div style="width:{conf_pct}%;background:{bar_color};height:18px;border-radius:8px;"></div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            st.write(f"Model: `{model_used}`")
-
-            explanation = resp.get("explanation", {})
-            render_explain_card(explanation)
-
-            # Correction UI
-            st.write("---")
-            st.write("### Correct prediction")
-            categories = fetch_categories()
-            correct_label = st.selectbox("Select correct category", options=categories, index=0, key="correction_select")
-            if st.button("Submit Correction"):
+    if st.button("Predict"):
+        if not text_input_value.strip():
+            st.warning("Please enter a transaction string.")
+        else:
+            with st.spinner("Calling predict..."):
                 try:
-                    fb = call_feedback(text, correct_label)
+                    resp = call_predict(text_input_value)
+                    st.session_state.last_predicted = text_input_value
+                    st.session_state.last_prediction_result = resp
+                    if text_input_value not in st.session_state.session_transactions:
+                        st.session_state.session_transactions.append(text_input_value)
+                except Exception as e:
+                    st.error(f"Predict failed: {e}")
+                    resp = None
+
+    # Display last prediction if available
+    resp = st.session_state.last_prediction_result
+    if resp:
+        category = resp.get("category", "Unknown")
+        confidence = float(resp.get("confidence", 0.0))
+        model_used = resp.get("model_used") or resp.get("explanation",{}).get("model_used","unknown")
+        st.markdown(f"<h2 style='margin:0'>{category}</h2>", unsafe_allow_html=True)
+        conf_pct = int(round(confidence*100))
+        st.write(f"Confidence: {confidence:.2f}")
+        bar_color = "#2ECC71" if confidence >= 0.8 else "#F39C12" if confidence >= 0.5 else "#E74C3C"
+        st.markdown(
+            f"""
+            <div style="background:#eee;border-radius:8px;padding:6px;">
+              <div style="width:{conf_pct}%;background:{bar_color};height:18px;border-radius:8px;"></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.write(f"Model: `{model_used}`")
+
+        explanation = resp.get("explanation", {})
+        render_explain_card(explanation)
+
+        # Correction form
+        st.write("---")
+        st.write("### Correct prediction")
+        categories = fetch_categories()
+        correction_form_key = f"correction_form_{st.session_state.last_predicted}"
+        with st.form(key=correction_form_key):
+            correct_label = st.selectbox("Select correct category", options=categories, index=categories.index(category) if category in categories else 0)
+            submit_btn = st.form_submit_button("Submit Correction")
+            if submit_btn:
+                try:
+                    fb = call_feedback(st.session_state.last_predicted, correct_label)
                     st.success(f"Saved feedback id: {fb.get('id', 'unknown')}")
                 except Exception as e:
                     st.error(f"Feedback failed: {e}")
 
 with right:
     st.header("Demo runner & Timeline")
-    st.write("Quick demo with canned examples.")
     timeline = st.empty()
+    st.write("Shows only transactions predicted in this session.")
     if st.button("Run demo sequence"):
-        timeline_lines = []
-        for idx, case in enumerate(DEMO_CASES):
-            timeline_lines.append(f"▶ Predict: {case}")
-            timeline.markdown("\n".join(timeline_lines))
+        lines = []
+        for t in st.session_state.session_transactions:
+            lines.append(f"▶ Predict: {t}")
+            timeline.markdown("\n".join(lines))
             try:
-                resp = call_predict(case)
+                resp = call_predict(t)
                 cat = resp.get("category")
                 conf = resp.get("confidence")
-                timeline_lines.append(f"  → Predicted: {cat} ({conf:.2f})")
+                lines.append(f"  → Predicted: {cat} ({conf:.2f})")
             except Exception as e:
-                timeline_lines.append(f"  → Predict failed: {e}")
-                timeline.markdown("\n".join(timeline_lines))
+                lines.append(f"  → Predict failed: {e}")
+                timeline.markdown("\n".join(lines))
                 continue
-
-            # simulate a demo correction if configured
-            if idx in DEMO_CORRECTIONS:
-                correct = DEMO_CORRECTIONS[idx]
-                timeline_lines.append(f"  → Demo correction: {correct}")
-                timeline.markdown("\n".join(timeline_lines))
-                try:
-                    fb = call_feedback(case, correct)
-                    timeline_lines.append(f"  → Feedback saved id {fb.get('id')}")
-                except Exception as e:
-                    timeline_lines.append(f"  → Feedback failed: {e}")
-                # trigger retrain incremental demo
-                try:
-                    retr = call_retrain(mode="incremental", model="tfidf")
-                    timeline_lines.append(f"  → Retrain: {retr.get('status')} - {retr.get('details')}")
-                except Exception as e:
-                    timeline_lines.append(f"  → Retrain failed: {e}")
-
-                # re-run predict to show "improvement"
-                try:
-                    resp2 = call_predict(case)
-                    cat2 = resp2.get("category")
-                    conf2 = resp2.get("confidence")
-                    timeline_lines.append(f"  → Re-predict: {cat2} ({conf2:.2f})")
-                except Exception as e:
-                    timeline_lines.append(f"  → Re-predict failed: {e}")
-
-            # small pause for demo readability
-            timeline.markdown("\n".join(timeline_lines))
-            time.sleep(0.6)
+            timeline.markdown("\n".join(lines))
+            time.sleep(0.4)
 
     st.write("---")
     st.write("Admin")
-    if st.button("Reload taxonomy (categories)"):
+    if st.button("Retrain model"):
+        with st.spinner("Retraining TF-IDF with feedback..."):
+            try:
+                retr = call_retrain(mode="full", model="tfidf")
+                if retr.get("status") == "complete":
+                    st.success(f"✓ Retrain completed: {retr.get('details')}")
+                    # Clear cache to force reload of categories
+                    fetch_categories.clear()
+                    # Show category info
+                    cat_count = retr.get("categories_trained", 0)
+                    if cat_count > 0:
+                        st.info(f"✓ Model now has {cat_count} categories")
+                        if "categories_list" in retr:
+                            st.write("**Categories:**", ", ".join(retr.get("categories_list", [])))
+                    else:
+                        st.warning("⚠ Could not determine category count from response")
+                    # Force UI refresh by updating session state
+                    st.rerun()
+                else:
+                    st.warning(f"Retrain status: {retr.get('status')} - {retr.get('details')}")
+            except Exception as e:
+                st.error(f"Retrain failed: {e}")
+                import traceback
+                st.code(traceback.format_exc())
+
+    if st.button("Reload categories"):
+        # Clear cache first
+        fetch_categories.clear()
         cats = fetch_categories()
         st.success(f"Loaded {len(cats)} categories")
         st.write(cats)
 
-    if st.button("Download logs (not implemented)"):
-        st.info("This will download logs. (Implement server-side to return logs)")
-
-st.write("")
-st.write("**Notes:** The app expects backend endpoints: GET /health, GET /categories (optional), POST /predict, POST /feedback, POST /retrain. See README in repo to wire backend.")

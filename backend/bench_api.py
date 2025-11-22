@@ -9,11 +9,11 @@ import statistics
 from typing import List, Dict, Any
 
 
-# Configuration
+
 BASE_URL = "http://127.0.0.1:8000"
 PREDICT_URL = f"{BASE_URL}/predict"
 
-# Test data
+
 TEST_TRANSACTIONS = [
     "STARBCKS #103",
     "AMAZON.COM PURCHASE",
@@ -29,15 +29,7 @@ TEST_TRANSACTIONS = [
 
 
 def benchmark_predict(n_requests: int = 100) -> Dict[str, Any]:
-    """
-    Benchmark the /predict endpoint.
-    
-    Args:
-        n_requests: Number of requests to make
-        
-    Returns:
-        Dictionary with benchmark results
-    """
+   
     print(f"\n{'='*60}")
     print(f"Benchmarking /predict endpoint with {n_requests} requests")
     print(f"{'='*60}\n")
@@ -48,7 +40,7 @@ def benchmark_predict(n_requests: int = 100) -> Dict[str, Any]:
     start_time = time.time()
     
     for i in range(n_requests):
-        # Cycle through test transactions
+        
         text = TEST_TRANSACTIONS[i % len(TEST_TRANSACTIONS)]
         
         req_start = time.time()
@@ -61,7 +53,7 @@ def benchmark_predict(n_requests: int = 100) -> Dict[str, Any]:
             req_end = time.time()
             
             if response.status_code == 200:
-                latencies.append((req_end - req_start) * 1000)  # Convert to ms
+                latencies.append((req_end - req_start) * 1000)  
             else:
                 errors += 1
                 print(f"Error {response.status_code}: {response.text}")
@@ -69,7 +61,7 @@ def benchmark_predict(n_requests: int = 100) -> Dict[str, Any]:
             errors += 1
             print(f"Request failed: {e}")
         
-        # Progress indicator
+        
         if (i + 1) % 10 == 0:
             print(f"Progress: {i + 1}/{n_requests} requests completed")
     
@@ -158,13 +150,13 @@ def main():
         print("  uvicorn app:app --reload --host 127.0.0.1 --port 8000")
         return
     
-    # Run benchmark
+    
     results = benchmark_predict(n_requests=50)
     
-    # Print results
+    
     print_results(results)
     
-    # Save results to file
+    
     import json
     output_file = "metrics/bench_results.json"
     try:

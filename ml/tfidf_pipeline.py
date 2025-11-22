@@ -57,15 +57,19 @@ class TfidfPipeline:
 
     def partial_fit(self, texts, labels):
         X = self.vectorizer.transform(texts)
-        current = list(self.le.classes_)
-        new = list(set(labels) - set(current))
-        if new:
-            all_classes = current + new
-            self.le.fit(all_classes)
-        y = self.le.transform(labels)
-        classes = range(len(self.le.classes_))
-        self.clf.partial_fit(X, y, classes=classes)
+    
+    # Only keep labels that already exist in the label encoder
+        existing_labels = [label for label in labels if label in self.le.classes_]
+        if not existing_labels:
+            return 0  # nothing to update
+
+        y = self.le.transform(existing_labels)
+    
+    # Incremental update without specifying 'classes' (use existing)
+        self.clf.partial_fit(X[:len(y)], y)
         self._is_fitted = True
+        return len(y)
+
 
     def save(self, out_dir):
         os.makedirs(out_dir, exist_ok=True)

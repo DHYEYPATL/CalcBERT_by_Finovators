@@ -20,7 +20,12 @@ def apply_incremental_update(pipeline: TfidfPipeline, samples, save_dir="saved_m
         return 0
 
     texts, labels = zip(*samples)
-    pipeline.partial_fit(list(texts), list(labels))
-    pipeline.save(save_dir)
+    
+    updated_count = pipeline.partial_fit(list(texts), list(labels))
+    if updated_count > 0:
+        pipeline.save(save_dir)
+    
+    return updated_count
 
-    return len(samples)
+
+
