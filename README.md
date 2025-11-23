@@ -455,7 +455,7 @@ pytest tests/test_api.py
 
 ---
 
-**Made with 🧠 and ☕ by Team CalcBERT**
+**Made with 🧠 and ☕ by Team Finovators**
 
 *Transforming messy transactions into meaningful insights*
 
