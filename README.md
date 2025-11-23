@@ -85,9 +85,32 @@ CalcBERT automatically categorizes these into meaningful groups like "Coffee & B
 
 ---
 
+## 📊 **Performance Metrics**
+
+Our TF-IDF model achieves **71.9% accuracy** across 8 core transaction categories:
+
+<div align="center">
+
+| Category | Precision | Recall | F1-Score |
+|:---------|:---------:|:------:|:--------:|
+| 🎬 Entertainment | **1.00** | **0.50** | **0.67** |
+| 🍔 Food | **0.40** | **1.00** | **0.57** |
+| ⛽ Fuel | **1.00** | **0.50** | **0.67** |
+| 🛒 Grocery | **0.67** | **0.50** | **0.57** |
+| 💰 Loan | **1.00** | **1.00** | **1.00** |
+| 🛍️ Shopping | **0.67** | **1.00** | **0.80** |
+| 🚗 Transport | **1.00** | **0.50** | **0.67** |
+| 💳 Wallet | **1.00** | **0.75** | **0.86** |
+| | | | |
+| **📈 OVERALL** | **0.84** | **0.72** | **0.73** |
+
+</div>
+
+**Key Insights:**
+- ✅ **Perfect Performance** on Loan category (100% across all metrics)
 - ✅ **Strong Precision** with 84% macro average (low false positives)
-- 🎯 **Balanced F1-Score** of 73% demonstrates robust classification
-- � **Test Coverage** across 32 real-world transaction samples
+- 🎯 **Balanced F1-Score** of 72.5% demonstrates robust classification
+- 🔄 **Continuous Improvement** through user feedback and retraining
 
 ---
 
